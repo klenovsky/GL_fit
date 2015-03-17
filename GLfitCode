@@ -1,0 +1,1064 @@
+#include <fstream>
+#include <math.h>
+#include <vector>
+#include <limits>
+#include <cmath>
+#include <stdlib.h>     /* atoi */
+#include <iostream>
+#include <iomanip>
+#include <locale>
+#include <deque>
+#include <list>
+#include <typeinfo>
+#include <complex>
+#include <string>
+//#include "D:\Vysoka_skola\GLfit\boost_1_55_0b1\boost\tuple\tuple.hpp"
+//#include <tuple>
+
+using namespace std;
+
+#define EPS -40
+
+#define npar 4
+
+#define GLorder 8
+
+//#define MaxNo numeric_limits<double>::max()
+#define MaxNo 1.0e40
+
+#define zeroLD numeric_limits<double>::epsilon()
+
+complex<double>im = sqrt( complex<double>(-1.0) ) ;
+complex<double> re2(2.0,0.0);
+complex<double> re0(0.0,0.0);
+
+
+
+// type:
+// 0 - symmetric GL
+// 1 - assymetric GL - aparatus function
+pair<double*, double*> JHcoef(int type){
+     double *a,*b;
+     a = new double [GLorder+1];
+     b = new double [GLorder+1];
+     
+     switch( type ){
+         case 0:
+             a[0]=8.244055119e2;
+             a[1]=1.435722026e3;
+             a[2]=1.245863526e3;
+             a[3]=6.693984459e2;
+             a[4]=2.377594369e2;
+             a[5]=5.572927074e1;
+             a[6]=8.041533783e0;
+             a[7]=5.641892313e-1;
+             a[8]=0.0;
+
+             b[0]=8.244055221e2;
+             b[1]=2.365963953e3;
+             b[2]=3.091162830e3;
+             b[3]=2.411598451e3;
+             b[4]=1.235396668e3;
+             b[5]=4.285409602e2;
+             b[6]=9.927783847e1;
+             b[7]=1.425323100e1;
+             b[8]=1.0;
+             break;
+         case 1:
+             1;
+             break;
+     }
+     return make_pair(a,b);
+}
+
+
+
+
+void printMatrix(double **M, int no_lc){
+    cout << endl << "-------------------------------------------------------------------------" << endl;
+    for(int i=0;i<no_lc;i++){
+      for(int j=0;j<no_lc;j++){
+          cout << setprecision(3) << setw(7) << M[i][j] << " ";
+      }
+      cout << endl << "-------------------------------------------------------------------------" << endl;
+      //cout << endl;
+   }
+}
+
+
+
+
+
+
+double ** multiplyMatrices(double **M1, double **M2, int no_lc){
+    double S;
+    double **M3;
+    int i,j,k;
+    M3 = new double *[no_lc];
+    for(i = 0; i < (no_lc); i++){M3[i] = new double[no_lc];}
+    for(i=0;i<no_lc;i++){
+      for(j=0;j<no_lc;j++){
+          S=0.0;
+          for(k=0;k<no_lc;k++){
+              S+=M1[i][k]*M2[k][j];
+          }
+          M3[i][j]=S;
+      }
+   }
+   return M3;
+}
+
+
+
+
+//*****************************************************************************
+//*****************************************************************************
+//Cholesky decomposition
+pair < double , double** > Cholesky(double **Ain, int no_lc){
+    int i,l,c,k;
+    double S, det=1.0;
+
+
+    double **L;
+    L = new double *[no_lc];
+    for (i=0; i<no_lc; i++){
+        L[i] = new double [no_lc];
+    }
+    for(int i=0;i<no_lc;i++){
+        for(int j=0;j<no_lc;j++){
+            L[i][j]=0.0;
+        }
+    }
+
+    for(l=0; l<no_lc; l++){
+            for(c=l; c<no_lc; c++){
+                  S=Ain[l][c];
+                  for(k=0; k<l; k++){ S-=L[l][k]*L[c][k]; }
+                  if(l==c){
+                       if(S<=zeroLD){
+                               det=0.0;
+                               cout << "S=" << S << " ; matrix not positive. Terminating Cholesky." << endl;
+                               return make_pair ( det , L );
+                       }
+                       //det*=S;
+                       det+=log(S);
+                       L[l][l]=sqrt(S);
+                  } else {
+                       L[c][l]=S/L[l][l];
+                  }
+            }
+   }
+   return make_pair ( det , L );
+}
+
+
+
+//*****************************************************************************
+//*****************************************************************************
+//solving linear equations using Cholesky decomposition
+double* EqSolve( double **L , double *B , int no_lc){
+   int l,k;
+   double S;
+   double *X,*Y;
+   pair < double , double** > temp;
+
+   X = new double [no_lc];
+   Y = new double [no_lc];
+
+   //reseni soustavy rovnic A=LL^Tx=b Choleskeho metodou, zalozena na rozkladu na reseni dvou soustav,
+   //pricemz se pouzivaji stale stejne vektory pro ukladani hodnot
+   //reseni Ly=b
+   for(l=0; l<no_lc; l++){
+            S=B[l];
+            for(k=0; k<l; k++){S-=L[l][k]*Y[k];}
+            Y[l]=S/L[l][l];
+   }
+   //reseni l^Tx=y
+   for(l=(no_lc-1); l>-1; l--){
+            S=Y[l];
+            for(k=l+1; k<no_lc; k++){S-=L[k][l]*X[k];}
+            X[l]=S/L[l][l];
+   }
+
+   return X;
+}
+
+
+//*****************************************************************************
+//*****************************************************************************
+//matrix inversion using Cholesky
+pair < double ,double** > InvChol(double **A, int no_lc){
+
+   int i,j,k;
+   double S,det;
+   pair < double , double** > temp;
+
+   double **L;
+    L = new double *[no_lc];
+    for (i=0; i<no_lc; i++){
+        L[i] = new double [no_lc];
+    }
+
+    double **H;
+    H = new double *[no_lc];
+    for (i=0; i<no_lc; i++){
+        H[i] = new double [no_lc];
+    }
+
+    double **R;
+    R = new double *[no_lc];
+    for (i=0; i<no_lc; i++){
+        R[i] = new double [no_lc];
+    }
+   temp=Cholesky(A,no_lc);
+   //cout << "CHOLESKY DET " << temp.first << endl;
+   if( temp.first < numeric_limits<double>::epsilon() ){ det=0.0; }
+   else{det=1.0/temp.first;}
+   L=temp.second;
+   //cout << "INVERSION DET " << det << endl;
+   for(i=0;i<no_lc;i++){
+      for(j=0;j<no_lc;j++){
+          H[i][j]=L[i][j];
+      }
+   }
+
+   for(i=0;i<no_lc;i++){
+      H[i][i]=1.0/L[i][i];
+      for(j=i+1;j<no_lc;j++){
+         S=0.0;
+         for(k=i;k<j;k++){S-=L[j][k]*H[k][i];}
+         H[j][i]=S/L[j][j];
+      }
+   }
+   for(i=0;i<no_lc;i++){
+      H[i][i] *= H[i][i];
+      for (k=i+1; k < no_lc; k++) {
+              H[i][i] += H[k][i] * H[k][i];
+      }
+      for(j=i+1;j<no_lc;j++){
+          S=0.0;
+          for(k=j;k<no_lc;k++){
+                S+=H[k][i]*H[k][j];
+          }
+          H[i][j]=S;
+      }
+   }
+
+   for(i=0;i<no_lc;i++){
+      for(j=0;j<i;j++){
+            H[i][j]=H[j][i];
+      }
+   }
+
+   return make_pair ( det , H );
+}
+
+
+//*****************************************************************************
+//*****************************************************************************
+//solving linear equations using matrix inversion
+double* EqSolveInv( double **A , double *B , int no_lc){
+   int i,k;
+   double S,det;
+   double *X;
+   
+   X = new double [no_lc];
+
+   for(i=0;i<no_lc;i++){
+       S=0.0;
+       for(k=0;k<i;k++){ S+=A[i][k]*B[k];}
+       for(k=i;k<no_lc;k++){ S+=A[k][i]*B[k];}
+       X[i]=S;
+   }
+
+   return X;
+}
+
+
+
+
+
+
+
+
+//***********************************************************************************************************
+//                                      FITTING FUNCTION
+//***********************************************************************************************************
+
+
+//*****************************************************************************
+//*****************************************************************************
+//Gauss-Lorentz band using JH approximants
+//pair < complex<double>*, complex<double>** > GL( vector<double> x,double F_0, double x_0, double gamma_g, double gamma_l){
+pair < complex<double>*, complex<double>** > GL( vector<double> x, double* par, double* limU, double* limL){
+   complex<double> r,dr,dV,drdF_0;
+   int i,j;
+   
+   //putting input into parameters
+   double F_0=par[0];
+   double x_0=par[1];
+   double gamma_g=par[2];
+   double gamma_l=par[3];
+   
+   
+   //coefficients of rational approximants of 8th order
+   //double *a,*b;
+   double *a = JHcoef(0).first;
+   double *b = JHcoef(0).second;   
+                                 
+   
+   complex<double> *Vout,**dVout,***Hess;
+   //initializing array for GL
+   Vout = new complex<double> [x.size()];
+
+   //initializing array for derivative of GL
+   dVout = new complex<double> *[4];
+   for( i = 0; i < 4; i++){dVout[i] = new complex<double>[x.size()];}
+
+   
+   //calculating differentiation of V by x0 and gamma_l; here, because they are independent on x
+   complex<double> drdx_0( 0 , 1.0/gamma_g );
+   complex<double> drdgl( 1.0/gamma_g , 0 );
+
+   
+   //complex<double>im = sqrt( complex<double>(-1.0) ) ;
+   //for every x calculate
+   for( i=0; i<x.size(); i++ ){
+     if ( F_0>=limL[0] && F_0<=limU[0] && x_0>=limL[1] && x_0<=limU[1] && gamma_g>=limL[2] && gamma_g<=limU[2] && gamma_l>=limL[3] && gamma_l<=limU[3] ){ 
+       //initialization of complex variables for single x
+       complex<double> z( gamma_l/gamma_g , (x_0-x[i])/gamma_g );
+       //complex<double> z( (x[i]-x_0)/gamma_g , gamma_l/gamma_g );
+       complex<double> P(0.0,0.0);
+       complex<double> Q(0.0,0.0);
+       complex<double> dP(0.0,0.0);
+       complex<double> dQ(0.0,0.0);
+
+       
+       //calculating polynoms P and Q for f=P/Q and their first and second derivatives
+       for(j=0;j<(GLorder+1);j++){
+          P+=a[j]*pow(z,j);
+          Q+=b[j]*pow(z,j);
+          if (j<GLorder){ dP+=a[j+1]*(j+1)*pow(z,j); }
+          if (j<GLorder){ dQ+=b[j+1]*(j+1)*pow(z,j); }
+       }
+
+       
+       //calculating r and then Voigt profile V=F0*r
+       r=P/Q;
+       Vout[i]=F_0*r;
+
+       //finishing calculation of FIRST derivatives of P and Q and calculating derivative of common V'
+       dP=dP*Q;
+       dQ=dQ*P;
+       dr=(dP-dQ)/pow(Q,2);
+       //dV=F_0*dr;
+
+       //cout << P << ' ' << Q << ' ' << z << ' ' << ' ' << -gamma_l/pow(gamma_g,2) << ' ' << (x[i]-x_0)/pow(gamma_g,2) << ' '<< r << endl;
+
+       //first differentiation by the parameters
+       //0 by F0
+       //1 by x0
+       //2 by gamma_g
+       //3 by gamma_l
+       complex<double> drdgg( -gamma_l/pow(gamma_g,2) , (x[i]-x_0)/pow(gamma_g,2) );
+       dVout[0][i]=r; //first differentiation by F0
+       dVout[1][i]=F_0*dr*drdx_0; //first differentiation by x0
+       dVout[2][i]=F_0*dr*drdgg; //first differentiation by gamma_g
+       dVout[3][i]=F_0*dr*drdgl; //first differentiation by gamma_l
+       
+       //for debugging
+       //cout << V << ' ' << dV << ' ' << dVdF_0 << ' ' << dVdx_0 << ' ' << dVdgg << ' ' << dVdgl << endl;
+     } else { Vout[i]=1.0e26; }
+   }
+  
+ return make_pair ( Vout , dVout );
+}
+
+
+
+
+
+
+
+//*****************************************************************************
+//*****************************************************************************
+//Sum of Gauss-Lorentz bands
+complex<double>* GLsum( vector<double> x, vector< pair < complex<double>*, complex<double>** > > bands){
+    complex<double> *V;
+    V = new complex<double> [x.size()];
+
+    //cout << bands.size() << ' ' << endl;
+    for (int i=0;i<bands.size();i++){
+        for(int j=0;j<x.size(); j++){
+             //cout << x[j] << ' ' << bands[i][j] << endl;
+             if (i==0){
+                V[j]=bands[i].first[j];
+             }
+             else {
+                V[j]+=bands[i].first[j];
+             }
+        }
+    }
+    return V;
+}
+
+
+
+
+
+
+
+//Evaluation of the sum of squares of differences between data and sum of GL profiles
+double   ResSum    ( vector<double> x, vector< complex < double > > Data , vector< pair < complex<double>*, complex<double>** > > bands){
+    double Res = 0.0;
+    //Res = new complex<double> [x.size()];
+
+    complex < double > *Func;
+    
+    Func=GLsum( x , bands );
+
+    for(int j=0;j<x.size(); j++){
+        //Res+=(Data[j]-Func[j]) * conj(Data[j]-Func[j]);
+        Res+=pow( real(Data[j])-real(Func[j]) , 2 );
+    }
+    return Res;
+}
+
+                                  
+
+
+//******************************************************************************************************************************
+//Evaluation of the gradient and Hessian of sum of squares of differences between data and sum of GL profiles
+//******************************************************************************************************************************
+
+
+pair< double * , double ** >   ResSumGradHess   ( vector<double> x, vector < complex < double > > Data , vector< pair < complex<double>*, complex<double>** > > bands){
+    int i,j;
+    double tmp0,tmp1;
+    
+    double * GRes;
+    GRes = new double [bands.size()*npar];
+    
+    double **HRes;
+    HRes = new double *[bands.size()*npar];
+    for( j = 0; j < bands.size()*npar; j++){
+        HRes[j] = new double[bands.size()*npar];
+    }
+    
+    
+
+    complex < double > *Func;
+    
+    Func=GLsum( x , bands );
+
+    vector< complex < double >** > Grad;
+    for (i=0; i<bands.size(); i++) {
+        Grad.push_back( bands[i].second );
+    }
+        
+    //sum_i( 2*(yi-Fi)*(-dFi/dai) )
+    for(int b=0;b<bands.size(); b++){      
+      for(int l=0;l<npar; l++){
+          //Gradient of residual sum
+          GRes[b*npar+l]=0.0;
+          for(int j=0;j<x.size(); j++){GRes[b*npar+l]+=-2.0*( (real(Data[j])-real(Func[j]))*real(Grad[b][l][j]) );}
+          //for(int j=0;j<x.size(); j++){GRes[b*npar+l]+=-2.0*real( (Data[j]-Func[j])*Grad[b][l][j] );}
+          for(int b1=0;b1<bands.size(); b1++){
+             for(int l1=0;l1<npar; l1++){
+                 //Hessian of residual sum
+                 HRes[b*npar+l][b1*npar+l1]=0.0;
+                 for(int j=0;j<x.size(); j++){ HRes[b*npar+l][b1*npar+l1]+=2.0*( real(Grad[b][l][j])*real(Grad[b1][l1][j]) ); }
+                 //for(int j=0;j<x.size(); j++){ HRes[b*npar+l][b1*npar+l1]+=2.0*real( Grad[b][l][j]*conj(Grad[b1][l1][j]) ); }
+                 //for(int j=0;j<x.size(); j++){ HRes[b*npar+l][b1*npar+l1]+=2.0*real( Grad[b][l][j]*Grad[b1][l1][j] ); }
+             }
+          }    
+      }
+    }
+        
+    return make_pair( GRes , HRes );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//***********************************************************************************************************
+//                           AUXILIARY FUNCTION FOR GENERATING GL PROFILES
+//***********************************************************************************************************
+
+
+//Function for loading GL profiles for residual sum of composite GL function, its gradient and Hessian
+//par is expected to be a vector of four numbers, i.e. of F0,x0,gamma_gg, and gamma_gl
+vector< pair < complex<double>*, complex<double>** > > CalcGLs ( vector<double> x, vector<double*> par, vector<double*> limU, vector<double*> limL ){
+   vector< pair < complex<double>*, complex<double>** > > GLval;
+   for (int i=0;i<par.size();i++){
+       GLval.push_back( GL( x ,par[i], limU[i], limL[i] ) );
+   }
+   return GLval;
+}
+           
+
+
+
+
+
+
+
+
+
+
+
+
+//***********************************************************************************************************
+//                                   MARQUARD-LEVENBERG ALGORITHM
+//***********************************************************************************************************
+
+
+//Fitting function based on Marquard-Levenberg algorithm
+pair< double, vector<double*> > ML( vector<double> x , vector < complex< double > > Data , vector<double*> Fpar, vector<double*> limU, vector<double*> limL, vector<int*> fix){
+    int b,p0,p1,i,j;
+       
+    //cout << endl << "no of parameters " << npar << " " << sizeof(Fpar[0]) << endl;
+    
+    pair < double , double** >  tmp;
+    
+    pair< double * , double ** > tmpGH;
+    
+    double** AChol;
+    AChol=new double *[Fpar.size()*npar];
+    for(i=0;i<Fpar.size()*npar;i++){
+        AChol[i]=new double [Fpar.size()*npar];
+    }
+    
+    double** AInv;
+    AInv=new double *[Fpar.size()*npar];
+    for(i=0;i<Fpar.size()*npar;i++){
+        AInv[i]=new double [Fpar.size()*npar];
+    }  
+    
+    double** AOut;
+    AOut=new double *[Fpar.size()*npar];
+    for(i=0;i<Fpar.size()*npar;i++){
+        AOut[i]=new double [Fpar.size()*npar];
+    } 
+    
+    vector<double*> FparGG0;
+    vector<double> oscStr;
+    vector< pair < complex<double>*, complex<double>** > > GLsGG0; 
+
+    double RNDet;
+        
+    pair < double ,double** > tmpInv;
+        
+    vector< pair < complex<double>*, complex<double>** > > GLs;
+    double S;
+    double* G;
+    double** A;
+    double *D;
+    D=new double[Fpar.size()*npar];
+    double **ParErr;
+    ParErr=new double*[Fpar.size()];
+    for( i=0; i<Fpar.size(); i++){ ParErr[i]=new double[npar]; }
+    double *delta;
+    delta=new double[Fpar.size()*npar];
+    double Adiag;
+    double *Step;
+    Step=new double [Fpar.size()*npar];
+    double RDet;
+    
+
+    double LaMax=MaxNo;//*1e-2;
+    double Lambda=1.0;
+    double Fmin=0.0001;
+    double F=1.0e10;
+    double ResPrev=0.0;
+    double ResDiff=1e-1;
+    double StepMin=5e0; 
+    double LaSt=1.5;
+    int NSDL=0;
+    int Nfcn=1;
+    int Nit=0;
+    int Nstatus=-1;
+    int MaxIt=50;
+    int MaxNfcn=1e3;
+    int Ie=0;
+    int trigStep=0;
+
+    //cout << Fpar[0][0] << endl;
+    
+    //cout << endl << endl << "STARTING MARQUARD LEVENBERG" << endl << endl;
+
+    GLs=CalcGLs( x ,Fpar, limU, limL);
+    S=ResSum( x , Data , GLs )/float(x.size());
+    cout << "START S " << S << " " << ResSum( x , Data , GLs ) << " " << float(x.size()) << endl;
+    tmpGH=ResSumGradHess( x , Data , GLs );
+    G=tmpGH.first;
+    A=tmpGH.second;
+    //printMatrix(A,Fpar.size()*npar);
+    //F=S;
+    
+    if(MaxIt<=0){ Nstatus=3; }
+    
+    int noFixed=0;
+    for(i=0; i<Fpar.size(); i++){
+      for(j=0; j<npar; j++){
+         if( fix[i][j] == 0.0 ) {noFixed++;}
+      }
+    }
+    if(noFixed == Fpar.size()*npar){ Nstatus=3; }
+    
+    while(Nstatus<0){
+                            
+            //printMatrix(A,npar);
+            
+            //***gradient and Hessian normalization
+            for(p0=0; p0<Fpar.size()*npar; p0++){
+                    Adiag=A[p0][p0];
+                    if ( Adiag <= 0.0 ) {Adiag=1.0;}
+                    D[p0]=sqrt(fabs(Adiag));
+            }
+                        
+            for(p0=0; p0<Fpar.size()*npar; p0++){
+                    G[p0]/=(-1.0*D[p0]);
+                    for(p1=0; p1<Fpar.size()*npar; p1++){                       
+                       A[p0][p1]/=(D[p0]*D[p1]);
+                    }
+            }
+            
+            //printMatrix(A,  Fpar.size()*npar);
+            
+            //while( ( F-S > -1.0*fabs(zeroLD) ) && (Lambda < LaMax) ){
+            while( ( F >= S ) && (Lambda < LaMax) ){                
+                //cout << "   " << Nit << " Lambda " << Lambda << " Res sum " << F << endl;
+                //Nit++;
+             
+                RDet=0.0;
+                while( RDet <= zeroLD ){      
+                   for (b=0; b<Fpar.size(); b++){             
+                        for(p0=0; p0<npar; p0++){ A[b*npar+p0][b*npar+p0]+=fix[b][p0]*Lambda; }
+                   }
+                   tmp=Cholesky(A,Fpar.size()*npar);
+                   RDet=tmp.first;
+                   AChol=tmp.second;
+                                   
+                   //cout << "      " << Nit << " Lambda " << Lambda << " Res sum " << F << " Determinant " << RDet << endl;
+                   //Nit++;
+                   
+                   for (b=0; b<Fpar.size(); b++){                   
+                       for(p0=0; p0<npar; p0++){ A[b*npar+p0][b*npar+p0]-=fix[b][p0]*Lambda; }
+                   }                   
+                   if ( RDet <= 1.0*zeroLD ) { Lambda*=LaSt; NSDL=0; }
+                   //cout << "      " << Nit << " Lambda " << Lambda << " Res sum " << F << " Determinant " << RDet << endl;
+                }
+                
+                delta = EqSolve(AChol,G,Fpar.size()*npar);
+                for (b=0; b<Fpar.size(); b++){
+                    for (p0=0; p0<npar; p0++){                       
+                       Step[b*npar+p0]=fix[b][p0]*delta[b*npar+p0]/D[b*npar+p0];                       
+                       //Step[p0]=delta[p0];
+                       Fpar[b][p0]+=Step[b*npar+p0];
+                    }
+                }
+                GLs=CalcGLs( x ,Fpar, limU, limL);
+                F=ResSum( x , Data , GLs )/float(x.size());
+                                                
+                Nfcn++;
+                //if ( F-S > 1.0*zeroLD ){
+                if ( F >= S ){
+                  //cout << F << " " << S << " F >= S" << F-S << endl;
+                  for (b=0; b<Fpar.size(); b++){
+                     for (p0=0; p0<npar; p0++){
+                          Fpar[b][p0]-=Step[b*npar+p0];
+                     }
+                     Lambda*=LaSt;
+                     NSDL=0;
+                  }
+                }               
+            }
+            if(F<S){
+                1;
+                //cout << "F<S" << endl; 
+                Lambda/=LaSt;                    
+                S=F;
+                NSDL++;
+            }
+            
+            
+            cout << Nit << " Lambda " << setprecision(6) << Lambda << " Res sum " << setprecision(20) << F << endl;
+            
+            //****************************               CONVERGENCE TESTS                     *******************************
+            //cout << endl << "convF "<< F << " " << Fmin << endl << endl;
+            if (F<Fmin){ cout << endl << "ML CONVERGED Residual sum "<< F << " Sought minimum " << Fmin << endl << endl; Nstatus=0;}
+            if (Lambda>LaMax){ cout << endl << "TOO LARGE LAMBDA " << Lambda << " LambdaMax " << LaMax << endl << endl; Nstatus=1;}                       
+            if (NSDL>4 ){    
+            //if( Step<=StepMin ){
+            //if (NSDL>4 || fabs(ResPrev-F)<=0.1*Fmin ){
+            //if (NSDL>2 || trigStep==1 ){
+            //if ( trigStep==1 ){
+                cout << endl << "too low step " << trigStep << endl << endl;
+                
+                for(p0=0; p0<Fpar.size()*npar; p0++){
+                  for(p1=0; p1<Fpar.size()*npar; p1++){
+                      A[p0][p1]*=(D[p0]*D[p1]);
+                  }
+                }
+                tmpInv=InvChol(A, Fpar.size()*npar);
+                RDet= tmpInv.first;
+                AInv= tmpInv.second;
+                           
+                if ( RDet > zeroLD ){
+                    Ie=0;
+                    for(p0=0; p0<Fpar.size()*npar; p0++){
+                        if( fabs(Step[p0])<1e-4*sqrt(F)*sqrt(AInv[p0][p0]) ) {Ie++;}
+                    }
+                    cout << "Ie " << Ie << endl;
+                    if( Ie == (Fpar.size()*npar) ){ AOut=A; Nstatus=2;}
+                }
+                if (F<Fmin){cout << "DONE" << endl;}
+
+            }
+            if (Nit>MaxIt) { cout << endl << "TOO MANY ITERATIONS " << Nit << endl << endl; Nstatus=3;}
+            if (Nfcn>MaxNfcn) { cout << endl << "TOO MANY FUNCTION CALLS " << Nfcn << endl << endl; Nstatus=4;}
+            
+            //printMatrix(A,  Fpar.size()*npar);         
+                        
+            Nit++;
+            GLs=CalcGLs( x ,Fpar,limU,limL);
+            //F=ResSum( x , Data , GLs);
+            tmpGH=ResSumGradHess( x , Data , GLs );
+            G=tmpGH.first;
+            A=tmpGH.second; 
+            //cout << "END OF ITERATION STEP" << endl;               
+    }
+    //cout << endl << "ENDING MARQUARD LEVENBERG" << endl << endl;
+    for(p0=0; p0<Fpar.size()*npar; p0++){
+       for(p1=0; p1<Fpar.size()*npar; p1++){
+          A[p0][p1]*=(D[p0]*D[p1]);
+       }
+    }
+    
+    AOut=A;
+    
+    //Covariance matrix and parameter error computation    
+    tmpInv=InvChol(AOut, Fpar.size()*npar);
+    RDet= tmpInv.first;
+    AInv= tmpInv.second;
+    
+    if( RDet <= -zeroLD ) {cout << "Hess Det " << RDet << " HESSIAN NOT POSITIVE DEFINITE" << endl; return make_pair(RDet,Fpar);}
+    
+    
+    double** corrM;
+    corrM=new double *[Fpar.size()*npar];
+    for(i=0;i<Fpar.size()*npar;i++){
+        corrM[i]=new double [Fpar.size()*npar];
+    }  
+    for(p0=0; p0<Fpar.size()*npar; p0++){
+        Adiag=AInv[p0][p0];
+        if ( Adiag <= 0.0 ) {Adiag=1.0;}
+        D[p0]=sqrt(fabs(Adiag));
+    }
+                        
+    for(p0=0; p0<Fpar.size()*npar; p0++){
+         for(p1=0; p1<Fpar.size()*npar; p1++){                                 
+            corrM[p0][p1]=AInv[p0][p1]/(D[p0]*D[p1]);
+            //cout << corrM[p0][p1] << " ";  
+         }
+         //cout << endl;
+    } 
+    
+    
+    
+    
+    /*    
+    FparGG0=Fpar;
+    for (b=0; b<FparGG0.size(); b++){       
+       FparGG0[b][2]=1e-9;
+    }
+    GLsGG0=CalcGLs( x ,FparGG0, limU, limL);
+    for (b=0; b<GLsGG0.size(); b++){ 
+       complex<double>* GLvalGG0;      
+       GLvalGG0=GLsGG0[b].first;
+       double temp;
+       temp=0.0;
+       for (i=0; i<x.size(); i++){
+            //temp+=real(GLvalGG0[i]);
+            if (real(GLvalGG0[i]) > temp) {temp+=real(GLvalGG0[i]);}            
+            //cout << temp << endl;
+       }
+       oscStr.push_back(temp);
+    } */
+    
+    
+    
+    
+    
+    
+       
+    cout << "FITTED PARAMETERS AND ERRORS" << endl;
+    double oscSt=0.0;
+    for (b=0; b<Fpar.size(); b++){
+         cout << endl << "band " << b << endl;
+         cout << "[Par]   [std. err.]   [err. inv. diag. el. Hessian]   [global corr. coef.] " << endl;
+         oscSt=0.0;
+         /*
+         for (unsigned int osi=0; osi<Fpar.size(); osi++){
+             oscSt+=real(GLs[b].first[osi]);
+         }
+         cout << setprecision(4) << oscSt << " ";
+         cerr << setprecision(10) << oscSt << " ";*/
+         
+         //for(p0=0; p0<npar; p0++){
+         //    oscSt+=real(GLs[b].first[osi]);
+         //}
+         double Ftmp=Fpar[b][0];
+         Fpar[b][0]=1.0;
+         double Fnorm;
+         
+         vector<double> zero;
+         for (unsigned int osi=0; osi<x.size(); osi++){
+            zero.push_back( 0.0 );
+         }
+         
+         complex <double>* FnormAll;
+         
+         
+         //FnormAll=GL( one ,Fpar[b], limU[b], limL[b] );
+         //oscSt+=real(GLs[b].first[osi]);
+         FnormAll=GL( zero ,Fpar[b], limU[b], limL[b] ).first;
+         //for (static int dump=0; dump<FnormAll.size(); dump++){
+         
+         
+         Fnorm=real(FnormAll[0]);
+                            
+         //Fnorm=real( GL( zero ,Fpar[b], limU[b], limL[b] ).first[0] );
+         //cout << Fnorm << endl;             
+         
+         Fpar[b][0]=Ftmp/Fnorm;
+         //cout << Ftmp << "  " << Fpar[b][0] << endl;
+         cout << setprecision(4) << Fpar[b][0] << " ";
+         cerr << setprecision(10) << Fpar[b][0] << " ";
+         
+         Fpar[b][0]=Ftmp; 
+         
+         for(p0=0; p0<npar; p0++){
+              //ParErr[p0]=sqrt(F/( x.size()-npar ) )*sqrt(AInv[p0][p0]);
+              ParErr[b][p0]=sqrt(AInv[b*npar+p0][b*npar+p0]);                           
+              cout << setprecision(4) << Fpar[b][p0] << " +- " << ParErr[b][p0] << " " << 1/sqrt(AOut[b*npar+p0][b*npar+p0]) << " " << sqrt(1.0-1.0/(AOut[b*npar+p0][b*npar+p0]*AInv[b*npar+p0][b*npar+p0])) << endl;
+              cerr << setprecision(10) << Fpar[b][p0] << " ";
+         }
+         cerr << endl;
+         //cerr << setprecision(10) << oscStr[b] << endl;
+         //cout << setprecision(10) << oscStr[b] << endl;
+    }
+    //cerr << endl;
+    
+    
+    
+    cout << endl << "COVARIANCE MATRIX";   
+    printMatrix(AInv,Fpar.size()*npar);
+    
+    cout << endl << "CORRELATION MATRIX";
+    printMatrix(corrM,Fpar.size()*npar);
+    
+    cout << endl << "OUTPUT HESSIAN MATRIX";
+    printMatrix(AOut,Fpar.size()*npar);
+            
+    
+    return make_pair(RDet,Fpar);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//***********************************************************************************************************
+//                                      DATA LOADING
+//***********************************************************************************************************
+
+
+//*****************************************************************************
+//*****************************************************************************
+//For loading data
+pair < vector<double>,vector< complex < double > > > loadData(){
+
+   int i;
+   vector< double > dat_X;
+   vector < complex < double > > dat_Y;
+   int no_dat;   
+   double a;
+   pair < vector<double>,vector< complex < double > > > indata;
+      
+   cin >> no_dat;
+   //cout << "1EXPECTING " << no_dat << endl;
+   for(i=0; i<no_dat; i++){
+      cin >> a;
+      dat_X.push_back(a);
+      //cout << dat_X[i] << " " << endl;
+   }
+   
+   cin >> no_dat;
+   //cout << "2EXPECTING " << no_dat << endl;
+   for(i=0; i<no_dat; i++){
+      cin >> a;
+      dat_Y.push_back(a);
+      //cout << dat_Y[i] << " " << endl;
+   }
+   
+   indata=make_pair(dat_X,dat_Y);
+   return indata;
+}
+
+
+
+
+
+
+
+
+
+//***********************************************************************************************************
+//                                      GL PARAMETERS LOADING
+//***********************************************************************************************************
+
+
+//***********************************************************************************************************
+//                                          LOADING PARAMETER VALUES
+//***********************************************************************************************************
+vector<double*> loadPar(){
+   int no_val,no_bands,i,j;
+   double a;
+   vector<double*> par;      
+   cin >> no_bands >> no_val;
+   for(i=0; i<no_bands; i++){
+      double* tmp;
+      tmp=new double [no_val];
+      for(j=0; j<no_val; j++){
+          cin >> a;
+          tmp[j]=a;      
+      }
+      par.push_back(tmp);
+   }
+   return par;
+}
+
+
+//***********************************************************************************************************
+//                                          LOADING FIXED PARAMETER VALUES
+//***********************************************************************************************************
+vector<int*> loadFix(){
+   int no_val,no_bands,i,j;
+   int a;
+   vector<int*> par;      
+   cin >> no_bands >> no_val;
+   for(i=0; i<no_bands; i++){
+      int* tmp;
+      tmp=new int [no_val];
+      for(j=0; j<no_val; j++){
+          cin >> a;
+          tmp[j]=a;      
+      }
+      par.push_back(tmp);
+   }
+   return par;
+}
+
+
+
+
+
+                        
+
+
+
+//*******************************************************************************************************
+//***************************************   MAIN   ******************************************************
+//*******************************************************************************************************
+int main (int argc, char *argv[]) {
+   int i,j,k;
+   complex<double>* Vsum;   
+   pair < vector<double>,vector< complex < double > > > indata;  
+   pair < complex<double>*,pair < complex<double>**,complex<double>*** > > GLband;
+   
+   
+   
+   //**************               LOADING INPUT PARAMTERS              *********************************
+   
+   vector<double*> par;
+   par = loadPar();
+      
+   vector<double*> limU;
+   limU = loadPar();
+   
+   vector<double*> limL;
+   limL = loadPar();
+   
+   vector<int*> fix; 
+   fix = loadFix();
+   
+      
+   
+   //**************               LOADING DATA FOR FIT              ********************************* 
+   indata=loadData();
+   
+   
+   
+   //**************               LOADING STARTING GL BANDS              *********************************
+   vector< pair < complex<double>*, complex<double>** > > gls;
+   gls=CalcGLs(indata.first,par,limU,limL);
+      
+   Vsum = GLsum(indata.first,gls);
+   
+   
+           
+   //**************               STARTING FIT OF GL BANDS              *********************************
+           
+   vector<double*> FitPar;   
+   FitPar=ML(indata.first,indata.second,par,limU,limL,fix).second;
+   
+   gls=CalcGLs(indata.first,FitPar,limU,limL);
+   Vsum = GLsum(indata.first,gls);
+   
+   
+   
+   //**************               OUTPUT OF FITTED SPECTRA              *********************************
+   
+   cout << endl << "FITTED DATA" << endl;
+   cout << "[energy]   [meas]   [fit real]   [data-fit real]   [fit imag] " << endl;
+   cerr << "FIT" << endl;
+   for( i=0;i<indata.first.size();i++ ){
+       cout << setprecision(6) << indata.first[i] << " " << real(indata.second[i]) << " " << real(Vsum[i]) << " " << real(indata.second[i])-real(Vsum[i]) << " " << imag(Vsum[i]) << endl;
+       //cout.flush();
+       //DATA AND FIT BEING SEND TO ERROR STREAM
+       //cerr << indata.first[i] << " " << real(indata.second[i]) << " " << real(Vsum[i]) << " " << real(indata.second[i])-real(Vsum[i]) << " " << imag(Vsum[i]) << endl;
+       cerr << indata.first[i] << " " << real(indata.second[i]) << " " << real(Vsum[i]) << " " << real(indata.second[i])-real(Vsum[i]) << " ";
+       for( j=0;j<gls.size();j++ ){
+           //for( k=0;k<gls[j].first.size();k++ ){
+           cerr << real(gls[j].first[i]) << " ";
+           //}
+       }
+       cerr << endl;  
+       //cerr.flush();
+   }
+      
+   //**************************************************************************************************
+      
+   return 1;
+}
