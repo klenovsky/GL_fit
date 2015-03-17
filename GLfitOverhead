@@ -1,0 +1,177 @@
+import sys, os
+import time
+import subprocess as sub
+import numpy as na
+import matplotlib.pyplot as plt
+from operator import itemgetter, attrgetter
+import linecache
+
+
+
+
+
+GLbin="d:\\Vysoka_skola\\GLfit\\MLfit\\GL_v3.exe"
+GLsource="d:\\Vysoka_skola\\GLfit\\MLfit\\MLfit_GL_oscStr_v3.cpp"
+
+
+def convToeV( data ):
+   out= [ sp.true_divide( 1240.0, data[0] ), data[1] ]  
+
+
+
+
+
+def compileCode():
+    #building and compiling c++ code
+    #sub.Popen("g++ -static-libgcc -static-libstdc++ MLfit_GL_v6.cpp -o GL_v6.exe", shell=True, bufsize=0, stdin=None, stdout=None)
+    os.popen("g++ -static -Wall %s -o %s"%(GLsource,GLbin))
+    #sys.fwait(3)
+    print "CODE COMPILING COMPLETE"  
+    
+    
+
+ 
+    
+    
+    
+    
+    
+    
+def send (data,ini,outname='OutTest.txt'):
+    #print 'FITTING DATA'
+    p = sub.Popen(GLbin, bufsize=80, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE, close_fds=False)
+    nameIn='instream.txt'
+    f=open(nameIn,'w')
+        
+    datLen=len(ini.init)
+    #print 'INITIALIZATION ',ini.init
+    f.write('%s\n'%( str(datLen) ) )
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    f.write('%s\n'%( str(4) ) )
+    p.stdin.write('%s\n'%( str(4) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+        for j in range(4):
+             #if p.stdin.closed: print 'input closed already'
+             #else: p.stdin.write('%s\r\n'%( str(ini.init[i][j]) ) )
+             f.write('%s\n'%( str(ini.init[i][j]) ) )
+             p.stdin.write('%s\n'%( str(ini.init[i][j]) ) )             
+             p.stdin.flush()
+             #p.stdin.write('\n')
+             #f.write('\n')
+    #p.stdin.flush()
+    
+    datLen=len(ini.up)
+    f.write('%s\n'%( str(datLen) ) )
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    f.write('%s\n'%( str(4) ) )
+    p.stdin.write('%s\n'%( str(4) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+        for j in range(4):
+             #if p.stdin.closed: print 'input closed already'
+             #else: p.stdin.write('%s\r\n'%( str(ini.up[i][j]) ) )
+             f.write('%s\n'%( str(ini.up[i][j]) ) )
+             p.stdin.write('%s\n'%( str(ini.up[i][j]) ) )             
+             #p.stdin.write('\n')
+             #f.write('\n')
+             p.stdin.flush()
+    #p.stdin.flush()
+    
+    datLen=len(ini.down)
+    f.write('%s\n'%( str(datLen) ) )
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    f.write('%s\n'%( str(4) ) )
+    p.stdin.write('%s\n'%( str(4) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+        for j in range(4):
+             #if p.stdin.closed: print 'input closed already'
+             #else: p.stdin.write('%s\r\n'%( str(ini.down[i][j]) ) )
+             f.write('%s\n'%( str(ini.down[i][j]) ) )
+             p.stdin.write('%s\n'%( str(ini.down[i][j]) ) )             
+             #p.stdin.write('\n')
+             #f.write('\n')             
+             p.stdin.flush()
+    #p.stdin.flush()
+    
+    datLen=len(ini.fix)
+    f.write('%s\n'%( str(datLen) ) )
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    f.write('%s\n'%( str(4) ) )
+    p.stdin.write('%s\n'%( str(4) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+        for j in range(4):
+             #if p.stdin.closed: print 'input closed already'
+             #else: p.stdin.write('%s\r\n'%( str(ini.fix[i][j]) ) )
+             f.write('%s\n'%( str(ini.fix[i][j]) ) )
+             p.stdin.write('%s\n'%( str(ini.fix[i][j]) ) )             
+             #p.stdin.write('\n')
+             #f.write('\n')            
+             p.stdin.flush()
+    #p.stdin.flush()
+    
+    
+    datLen=len(data[0])
+    f.write('%s\n'%( str(datLen) ) )   
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+       #if p.stdin.closed: print 'input closed already'
+       #else: p.stdin.write('%s\r\n'%( str(data[0][i]) ) )
+       #print data[0][i]
+       f.write('%s\n'%( str(data[0][i]) ) )
+       p.stdin.write('%s\n'%( str(data[0][i]) ) )      
+       #p.stdin.write('\n')
+       #f.write('\n')             
+       p.stdin.flush()
+    #p.stdin.flush()
+    
+    f.write('%s\n'%( str(datLen) ) )
+    p.stdin.write('%s\n'%( str(datLen) ) )    
+    p.stdin.flush()
+    for i in range(datLen):
+       #if p.stdin.closed: print 'input closed already'
+       #else: p.stdin.write('%s\r\n'%( str(data[1][i]) ) )
+       f.write('%s\n'%( str(data[1][i]) ) )
+       p.stdin.write('%s\n'%( str(data[1][i]) ) )       
+       #p.stdin.write('\n')
+       #f.write('\n')      
+       p.stdin.flush()
+    #p.stdin.flush()
+    
+    (std,err)= p.communicate()
+    
+    #print 'STARTING OUTPUT'       
+    fOut=open(outname+'.txt','w')
+    for line in std:
+        fOut.write( line )
+    fOut.close()
+    
+    #print 'OUTDATA'              
+    data=[]
+    fitVal=[]
+    lines=err.split('\n')[:-1]
+    fitTrig=0
+    for it in lines:       
+       #print it
+       if it[:3] == "FIT":
+           fitTrig=1
+       else:    
+         if fitTrig==0:
+           fitVal.append( map(float, it.split()) )
+         elif fitTrig==1:
+           data.append( map(float, it.split()) )
+           
+           
+    dataT = zip(*data)
+    
+    return fitVal,dataT
+        
+
+
